@@ -40,6 +40,11 @@ button{font:inherit;border:0;cursor:pointer}
 .change{margin-top:14px;background:none;color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px}
 [hidden]{display:none!important}
 
+/* 花のレコード */
+.turntable{display:block;margin:18px auto 0;width:min(78vw,300px);padding:0;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.turntable svg{display:block;width:100%;height:auto;overflow:visible;filter:drop-shadow(0 10px 18px rgba(0,30,110,.22))}
+.turntable:focus-visible{outline:2px solid var(--blue);outline-offset:6px;border-radius:12px}
+.rec-label{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;font-weight:800;font-size:19px;fill:#111}
 footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;font-weight:700;font-size:16px;line-height:2;color:var(--blue);letter-spacing:.02em;
   padding:0 16px;background:#fff;border-radius:999px;box-shadow:0 4px 14px rgba(0,40,140,.15)}
 </style>
@@ -63,6 +68,20 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
       <button class="change" id="change" type="button">URLを変える</button>
     </div>
   </main>
+
+  <button class="turntable" id="tt" type="button" aria-label="レコードを回す" aria-pressed="false">
+    <svg viewBox="0 0 300 260" aria-hidden="true">
+      <defs>
+        <linearGradient id="armG" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#1b1b1b"/><stop offset=".6" stop-color="#7a7a7a"/><stop offset="1" stop-color="#d0d0d0"/>
+        </linearGradient>
+      </defs>
+      <g id="rec"></g>
+      <path id="arm" d="" fill="none" stroke="url(#armG)" stroke-width="5" stroke-linecap="round"/>
+      <g id="head"><rect x="-6" y="-9" width="12" height="18" rx="2" fill="#222"/><line x1="-2" y1="6" x2="-9" y2="13" stroke="#f2f2f2" stroke-width="2" stroke-linecap="round"/></g>
+      <circle id="pivot" r="9" fill="#1e1e1e"/><circle id="pivotIn" r="3.5" fill="#777"/>
+    </svg>
+  </button>
 
   <footer>flansisco</footer>
 
@@ -107,6 +126,93 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
   });
 
   show();
+
+  /* ---------- 花のレコード ---------- */
+  (() => {
+    const NS = 'http://www.w3.org/2000/svg';
+    const C = { x:122, y:140 }, R = 112;            // レコードの中心と外径
+    const P = { x:272, y:26 }, L = 118;            // 針の根元と長さ
+    const A = 0.51 * R, B = 0.49 * R, CC = 0.62 * R, LABEL = 0.42 * R;  // 花びらの配置
+    const rec = document.getElementById('rec');
+    const el = (n, a) => { const e = document.createElementNS(NS, n); for(const k in a) e.setAttribute(k, a[k]); return e; };
+    const petals = [...Array(5)].map((_, i) => (-90 + i * 72) * Math.PI / 180);
+    petals.forEach(t => rec.appendChild(el('circle', { cx:C.x + Math.cos(t)*A, cy:C.y + Math.sin(t)*A, r:B, fill:'#5a585b' })));
+    rec.appendChild(el('circle', { cx:C.x, cy:C.y, r:CC, fill:'#5a585b' }));
+    [0.86, 0.74, 0.62].forEach(k => rec.appendChild(el('circle', { cx:C.x, cy:C.y, r:R*k, fill:'none', stroke:'#666468', 'stroke-width':1 })));
+    rec.appendChild(el('circle', { cx:C.x, cy:C.y, r:LABEL, fill:'#f0f0f5' }));
+    const txt = el('text', { x:C.x, y:C.y, 'text-anchor':'middle', 'dominant-baseline':'central', class:'rec-label' });
+    txt.textContent = 'flansisco'; rec.appendChild(txt);
+    // 溝の線は花の外に出ないよう切り抜く
+    const clip = el('clipPath', { id:'flowerClip' });
+    petals.forEach(t => clip.appendChild(el('circle', { cx:C.x + Math.cos(t)*A, cy:C.y + Math.sin(t)*A, r:B })));
+    clip.appendChild(el('circle', { cx:C.x, cy:C.y, r:CC }));
+    document.querySelector('#tt defs').appendChild(clip);
+    rec.querySelectorAll('circle[stroke]').forEach(c => c.setAttribute('clip-path', 'url(#flowerClip)'));
+
+    // 角度θ方向の花の外周までの距離
+    const edge = th => {
+      let best = CC;
+      for(const t of petals){
+        const d = th - t, s = Math.sin(d), c = Math.cos(d);
+        const disc = B*B - A*A*s*s;
+        if(disc >= 0) best = Math.max(best, A*c + Math.sqrt(disc));
+      }
+      return best;
+    };
+    // 中心から距離dの位置に針先が来る腕の角度(2円の交点)
+    const D = Math.hypot(P.x - C.x, P.y - C.y), base = Math.atan2(C.y - P.y, C.x - P.x);
+    const armAngleFor = d => {
+      const cosv = (L*L + D*D - d*d) / (2*L*D);
+      return base + Math.acos(Math.max(-1, Math.min(1, cosv)));   // レコードの右上側の解
+    };
+
+    const arm = document.getElementById('arm'), head = document.getElementById('head');
+    document.getElementById('pivot').setAttribute('cx', P.x); document.getElementById('pivot').setAttribute('cy', P.y);
+    document.getElementById('pivotIn').setAttribute('cx', P.x); document.getElementById('pivotIn').setAttribute('cy', P.y);
+
+    const REST = Math.PI * 0.5 - 0.08;           // 休んでいる時の腕の向き(ほぼ真下)
+    let playing = false, phi = 0, spin = 0, beta = REST, vBeta = 0, last = performance.now();
+    const btn = document.getElementById('tt');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const draw = () => {
+      const tip = { x:P.x + Math.cos(beta)*L, y:P.y + Math.sin(beta)*L };
+      // 速く動くほど腕が少ししなる
+      const mx = (P.x + tip.x)/2, my = (P.y + tip.y)/2, nx = -Math.sin(beta), ny = Math.cos(beta);
+      const bend = Math.max(-9, Math.min(9, vBeta * 6));
+      arm.setAttribute('d', `M${P.x} ${P.y} Q${mx + nx*bend} ${my + ny*bend} ${tip.x} ${tip.y}`);
+      head.setAttribute('transform', `translate(${tip.x} ${tip.y}) rotate(${beta*180/Math.PI - 90})`);
+      rec.setAttribute('transform', `rotate(${phi} ${C.x} ${C.y})`);
+    };
+
+    const loop = t => {
+      const dt = Math.min((t - last) / 1000, 0.05); last = t;
+      spin += ((playing ? 110 : 0) - spin) * (playing ? 1.6 : 1.2) * dt;   // 回転数(度/秒)
+      phi = (phi + spin * dt) % 360;
+      let target = REST;
+      if(playing){
+        // 針先が今いる方向の花の縁をなぞる
+        const tip = { x:P.x + Math.cos(beta)*L, y:P.y + Math.sin(beta)*L };
+        const th = Math.atan2(tip.y - C.y, tip.x - C.x) - phi * Math.PI / 180;
+        target = armAngleFor(edge(th) - 7);
+      }
+      // ばねで追いかける → ちょっとぐにゃぐにゃ
+      const k = playing ? 90 : 40, damp = playing ? 9 : 10;
+      vBeta += ((target - beta) * k - vBeta * damp) * dt;
+      beta += vBeta * dt;
+      draw();
+      requestAnimationFrame(loop);
+    };
+
+    btn.addEventListener('click', () => {
+      playing = !playing;
+      btn.setAttribute('aria-pressed', playing);
+      btn.setAttribute('aria-label', playing ? 'レコードを止める' : 'レコードを回す');
+    });
+    draw();
+    if(!reduce) requestAnimationFrame(loop);
+    else btn.addEventListener('click', () => { beta = playing ? armAngleFor(R*0.75) : REST; draw(); });
+  })();
 })();
 </script>
 </body>
