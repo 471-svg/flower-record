@@ -41,9 +41,29 @@ button{font:inherit;border:0;cursor:pointer}
 [hidden]{display:none!important}
 
 /* 花のレコード */
-.turntable{display:block;margin:18px auto 0;width:min(78vw,300px);padding:0;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.turntable{display:none;margin:0 auto;width:min(80svh,80vw);padding:0;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .turntable svg{display:block;width:100%;height:auto;overflow:visible;filter:drop-shadow(0 10px 18px rgba(0,30,110,.22))}
 .turntable:focus-visible{outline:2px solid var(--blue);outline-offset:6px;border-radius:12px}
+#arm,#head,#pivot,#pivotIn{display:none}
+/* 横向き: 花のレコードだけを中央でくるくる */
+.landwrap{display:contents}
+.hclock{display:none}
+@media (orientation:landscape) and (max-height:600px){
+  .card,footer{display:none}
+  .landwrap{display:flex;align-items:center;justify-content:center;gap:clamp(20px,5vw,56px)}
+  .turntable{display:block;margin:0;width:min(78svh,46vw)}
+  .hclock{display:flex;align-items:center;gap:0;height:min(30svh,15vw)}
+}
+.hclock svg{height:100%;width:auto;overflow:visible}
+.hclock path{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;filter:url(#pen)}
+.hclock .halo{display:none}
+.hclock .ink{stroke:#1d1d1f;stroke-width:4.8}
+.hclock svg.d{transition:transform .5s cubic-bezier(.3,1.4,.5,1)}
+.hclock path.draw{animation:draw .9s cubic-bezier(.4,0,.2,1) both}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.hclock .colon{height:70%;animation:blink 2s steps(1) infinite}
+@keyframes blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.hclock path.draw{animation:none}}
 .rec-label{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;font-weight:800;font-size:19px;fill:#111}
 footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;font-weight:700;font-size:16px;line-height:2;color:var(--blue);letter-spacing:.02em;
   padding:0 16px;background:#fff;border-radius:999px;box-shadow:0 4px 14px rgba(0,40,140,.15)}
@@ -69,8 +89,9 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
     </div>
   </main>
 
+  <div class="landwrap">
   <button class="turntable" id="tt" type="button" aria-label="レコードを回す" aria-pressed="false">
-    <svg viewBox="0 0 300 260" aria-hidden="true">
+    <svg viewBox="4 22 236 236" aria-hidden="true">
       <defs>
         <linearGradient id="armG" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#1b1b1b"/><stop offset=".6" stop-color="#7a7a7a"/><stop offset="1" stop-color="#d0d0d0"/>
@@ -82,6 +103,8 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
       <circle id="pivot" r="9" fill="#1e1e1e"/><circle id="pivotIn" r="3.5" fill="#777"/>
     </svg>
   </button>
+  <div class="hclock" id="hclock" role="timer" aria-live="off"></div>
+  </div>
 
   <footer>flansisco</footer>
 
@@ -126,6 +149,58 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
   });
 
   show();
+
+  /* ---------- 手書きの時計(横向き) ---------- */
+  (() => {
+    const NS = 'http://www.w3.org/2000/svg';
+    const DIGITS = {
+      0:'M27 8C12 8 7 30 8 46C9 64 16 73 26 72C38 71 43 55 42 38C41 20 36 8 25 9',
+      1:'M14 20C20 16 25 11 28 6C28 28 27 50 26 74',
+      2:'M10 22C12 10 22 6 30 8C40 11 41 24 35 34C27 47 16 60 8 73C20 71 32 71 44 72',
+      3:'M10 14C18 6 34 5 38 15C41 24 32 34 22 37C34 37 43 46 41 58C39 70 22 76 9 68',
+      4:'M32 74C32 52 32 30 33 6C24 22 15 38 7 52C19 51 32 51 45 50',
+      5:'M40 8C30 8 22 8 14 9C13 18 12 27 11 36C20 30 34 30 40 42C45 55 38 70 24 72C17 73 11 70 7 65',
+      6:'M36 9C24 10 14 26 11 44C9 60 15 72 26 72C37 72 42 62 40 52C38 42 28 38 19 42C14 45 11 50 11 54',
+      7:'M7 10C19 9 31 8 43 8C35 28 27 50 21 74',
+      8:'M26 37C14 33 12 20 17 13C22 6 34 7 37 15C40 23 33 32 26 37C16 42 9 52 11 62C13 71 24 75 33 71C42 66 42 52 34 44C31 41 28 39 26 37',
+      9:'M38 22C36 12 26 8 18 12C10 17 10 30 17 35C25 40 35 35 38 26C39 40 37 58 34 74'
+    };
+    const box = document.getElementById('hclock'), slots = [];
+    // 線のふちを少しガタつかせるペンのフィルター
+    const defs = document.createElementNS(NS, 'svg');
+    defs.setAttribute('width', 0); defs.setAttribute('height', 0); defs.style.position = 'absolute';
+    defs.innerHTML = '<filter id="pen" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="2.6" xChannelSelector="R" yChannelSelector="G"/></filter>';
+    document.body.appendChild(defs);
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const digit = () => {
+      const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '-3 -3 56 86'); svg.setAttribute('class', 'd');
+      const halo = document.createElementNS(NS, 'path'), ink = document.createElementNS(NS, 'path');
+      halo.setAttribute('class', 'halo'); ink.setAttribute('class', 'ink');
+      [halo, ink].forEach(p => { p.setAttribute('pathLength', '1'); svg.appendChild(p); });
+      box.appendChild(svg); slots.push({ svg, ps:[halo, ink], v:null });
+    };
+    digit(); digit();
+    const colon = document.createElementNS(NS, 'svg');
+    colon.setAttribute('viewBox', '0 0 14 80'); colon.setAttribute('class', 'colon');
+    const dots = 'M7.5 27.5c-2.6-.4-3 3.6-.4 3.6 2.3 0 2-3.4-.2-3.2M6 52.5c-1.9 1.2-.9 3.9.9 3.3 2-.6 1.1-3.6-1-3.1';
+    colon.setAttribute('viewBox', '-4 0 22 80');
+    colon.innerHTML = `<path class="halo" d="${dots}"/><path class="ink" d="${dots}"/>`;
+    box.appendChild(colon);
+    digit(); digit();
+    // 書くたびに傾き・位置・大きさが少しずつ変わる
+    const set = (i, n) => {
+      const s = slots[i]; if(s.v === n) return; s.v = n;
+      s.svg.style.transform = `translate(${rnd(-2,2)}px, ${rnd(-4,4)}px) rotate(${rnd(-6,5)}deg) scale(${rnd(.93,1.05)})`;
+      s.ps.forEach(p => { p.setAttribute('d', DIGITS[n]); p.classList.remove('draw'); void p.getBoundingClientRect(); p.classList.add('draw'); });
+    };
+    const tick = () => {
+      const d = new Date(), t = String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+      [...t].forEach((c, i) => set(i, +c));
+      box.setAttribute('aria-label', `${t.slice(0,2)}時${t.slice(2)}分`);
+      setTimeout(tick, 1000 - d.getMilliseconds() + 5);
+    };
+    tick();
+  })();
 
   /* ---------- 花のレコード ---------- */
   (() => {
@@ -204,6 +279,11 @@ footer{margin-top:22px;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","
       requestAnimationFrame(loop);
     };
 
+    // 横向きになったら自動で回す(タップで止める/回す)
+    const land = matchMedia('(orientation: landscape) and (max-height: 600px)');
+    const onOrient = () => { playing = land.matches; btn.setAttribute('aria-pressed', playing); };
+    land.addEventListener ? land.addEventListener('change', onOrient) : land.addListener(onOrient);
+    onOrient();
     btn.addEventListener('click', () => {
       playing = !playing;
       btn.setAttribute('aria-pressed', playing);
